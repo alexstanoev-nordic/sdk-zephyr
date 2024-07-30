@@ -196,6 +196,78 @@ struct bt_conn_le_data_len_param {
 	BT_CONN_LE_DATA_LEN_PARAM(BT_GAP_DATA_LEN_MAX, \
 				  BT_GAP_DATA_TIME_MAX)
 
+/** Connection subrating parameters for LE connections */
+struct bt_conn_le_subrate_param {
+	/** Minimum subrate factor. */
+	uint16_t subrate_min;
+	/** Maximum subrate factor. */
+	uint16_t subrate_max;
+	/** Maximum Peripheral latency in units of subrated connection intervals. */
+	uint16_t max_latency;
+	/** Minimum number of underlying connection events to remain active
+	 *  after a packet containing a Link Layer PDU with a non-zero Length
+	 *  field is sent or received. */
+	uint16_t continuation_number;
+	/** Connection Supervision timeout (N * 10 MS).
+	 *  If using @ref bt_conn_le_subrate_set_defaults, this is the
+	 *  maximum supervision timeout allowed in requests by a peripheral. */
+	uint16_t supervision_timeout;
+};
+
+/** Subrating information for LE connections */
+struct bt_conn_le_subrating_info {
+	/** Connection subrate factor */
+	uint16_t factor;
+	/** Number of underlying connection events to remain active after
+	 *  a packet containing a Link Layer PDU with a non-zero Length
+	 *  field is sent or received. */
+	uint16_t continuation_number;
+};
+
+/** Initialize subrating parameters
+ *
+ * @param  __subrate_min Minimum subrate factor.
+ * @param  __subrate_max Maximum subrate factor.
+ * @param  ___max_latency Maximum Peripheral latency in units of subrated
+ *                        connection intervals.
+ * @param  ___continuation_number Minimum number of underlying connection events
+ *                                to remain active after a packet containing a
+ *                                Link Layer PDU with a non-zero Length
+ *                                field is sent or received.
+ * @param  ___supervision_timeout Connection Supervision timeout (N * 10 MS).
+ */
+#define BT_CONN_LE_SUBRATE_PARAM_INIT(_subrate_min, _subrate_max, _max_latency, \
+		_continuation_number, _supervision_timeout) \
+{ \
+	.subrate_min = (_subrate_min), \
+	.subrate_max = (_subrate_max), \
+	.max_latency = (_max_latency), \
+	.continuation_number = (_continuation_number), \
+	.supervision_timeout = (_supervision_timeout), \
+}
+
+/** Helper to initialize subrating parameters inline
+ *
+ * @param  __subrate_min Minimum subrate factor.
+ * @param  __subrate_max Maximum subrate factor.
+ * @param  ___max_latency Maximum Peripheral latency in units of subrated
+ *                        connection intervals.
+ * @param  ___continuation_number Minimum number of underlying connection events
+ *                                to remain active after a packet containing a
+ *                                Link Layer PDU with a non-zero Length
+ *                                field is sent or received.
+ * @param  ___supervision_timeout Connection Supervision timeout (N * 10 MS).
+ */
+#define BT_CONN_LE_SUBRATE_PARAM(_subrate_min, _subrate_max, _max_latency, \
+		_continuation_number, _supervision_timeout) \
+	((struct bt_conn_le_subrate_param[]) { \
+		  BT_CONN_LE_SUBRATE_PARAM_INIT(_subrate_min, \
+						_subrate_max, \
+						_max_latency, \
+						_continuation_number, \
+						_supervision_timeout) \
+	})
+
 /** Connection Type */
 enum __packed bt_conn_type {
 	/** LE Connection Type */
@@ -310,6 +382,11 @@ struct bt_conn_le_info {
 	/* Connection maximum single fragment parameters */
 	const struct bt_conn_le_data_len_info *data_len;
 #endif /* defined(CONFIG_BT_USER_DATA_LEN_UPDATE) */
+
+#if defined(CONFIG_BT_SUBRATING)
+	/* Connection subrating parameters */
+	const struct bt_conn_le_subrating_info *subrate;
+#endif /* defined(CONFIG_BT_SUBRATING) */
 };
 
 /** @brief Convert connection interval to milliseconds
@@ -679,6 +756,36 @@ int bt_conn_le_set_path_loss_mon_param(struct bt_conn *conn,
  * @return Zero on success or (negative) error code on failure.
  */
 int bt_conn_le_set_path_loss_mon_enable(struct bt_conn *conn, bool enable);
+
+/** @brief Set Default Connection Subrating Parameters.
+ *
+ *  Change the default subrating parameters for all future
+ *  ACL connections where the controller is the central.
+ *  This command does not affect any existing connection.
+ *  Parameters set for specific connection will always have precedence.
+ *
+ *  @note To use this API @kconfig{CONFIG_BT_SUBRATING} and
+ *        @kconfig{CONFIG_BT_CENTRAL} must be set.
+ *
+ *  @param params Subrating parameters
+ *
+ *  @return Zero on success or (negative) error code on failure.
+ */
+int bt_conn_le_subrate_set_defaults(const struct bt_conn_le_subrate_param *params);
+
+/** @brief Request New Subrating Parameters.
+ *
+ *  Request a change to the subrating parameters of a connection.
+ *
+ *  @note To use this API @kconfig{CONFIG_BT_SUBRATING} must be set.
+ *
+ *  @param conn   Connection object.
+ *  @param params Subrating parameters
+ *
+ *  @return Zero on success or (negative) error code on failure.
+ */
+int bt_conn_le_subrate_request(struct bt_conn *conn,
+			       const struct bt_conn_le_subrate_param *params);
 
 /** @brief Update the connection parameters.
  *
@@ -1247,6 +1354,20 @@ struct bt_conn_cb {
 	void (*path_loss_threshold_report)(struct bt_conn *conn,
 				const struct bt_conn_le_path_loss_threshold_report *report);
 #endif /* CONFIG_BT_PATH_LOSS_MONITORING */
+
+#if defined(CONFIG_BT_SUBRATING)
+	/** @brief LE Subrate Changed event.
+	 *
+	 *  This callback notifies the application that the subrating parameters
+	 *  of the connection have changed. The new parameters can be obtained
+	 *  using @ref bt_conn_get_info if status is BT_HCI_ERR_SUCCESS.
+	 *
+	 *  @param conn   Connection object.
+	 *  @param status Status of subrate change.
+	 */
+	void (*subrate_changed)(struct bt_conn *conn,
+				const uint8_t status);
+#endif /* CONFIG_BT_SUBRATING */
 
 	/** @internal Internally used field for list handling */
 	sys_snode_t _node;

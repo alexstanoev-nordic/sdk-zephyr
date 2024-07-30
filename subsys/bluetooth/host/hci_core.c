@@ -2571,6 +2571,34 @@ void bt_hci_le_path_loss_threshold_event(struct net_buf *buf)
 }
 #endif /* CONFIG_BT_PATH_LOSS_MONITORING */
 
+#if defined(CONFIG_BT_SUBRATING)
+void bt_hci_le_subrate_change_event(struct net_buf *buf)
+{
+	struct bt_hci_evt_le_subrate_change *evt;
+	struct bt_conn *conn;
+
+	evt = net_buf_pull_mem(buf, sizeof(*evt));
+
+	conn = bt_conn_lookup_handle(sys_le16_to_cpu(evt->handle), BT_CONN_TYPE_LE);
+	if (!conn) {
+		LOG_ERR("Unknown conn handle 0x%04X for subrating event",
+		       sys_le16_to_cpu(evt->handle));
+		return;
+	}
+
+	if (evt->status == BT_HCI_ERR_SUCCESS) {
+		conn->le.subrate.factor = sys_le16_to_cpu(evt->subrate_factor);
+		conn->le.subrate.continuation_number = sys_le16_to_cpu(evt->continuation_number);
+		conn->le.latency = sys_le16_to_cpu(evt->peripheral_latency);
+		conn->le.timeout = sys_le16_to_cpu(evt->supervision_timeout);
+	}
+
+	notify_subrate_change(conn, evt->status);
+
+	bt_conn_unref(conn);
+}
+#endif /* CONFIG_BT_SUBRATING */
+
 static const struct event_handler vs_events[] = {
 #if defined(CONFIG_BT_DF_VS_CL_IQ_REPORT_16_BITS_IQ_SAMPLES)
 	EVENT_HANDLER(BT_HCI_EVT_VS_LE_CONNECTIONLESS_IQ_REPORT,
@@ -2723,6 +2751,10 @@ static const struct event_handler meta_events[] = {
 #if defined(CONFIG_BT_PATH_LOSS_MONITORING)
 	EVENT_HANDLER(BT_HCI_EVT_LE_PATH_LOSS_THRESHOLD, bt_hci_le_path_loss_threshold_event,
 		      sizeof(struct bt_hci_evt_le_path_loss_threshold)),
+#endif /* CONFIG_BT_PATH_LOSS_MONITORING */
+#if defined(CONFIG_BT_SUBRATING)
+	EVENT_HANDLER(BT_HCI_EVT_LE_SUBRATE_CHANGE, bt_hci_le_subrate_change_event,
+		      sizeof(struct bt_hci_evt_le_subrate_change)),
 #endif /* CONFIG_BT_PATH_LOSS_MONITORING */
 #if defined(CONFIG_BT_PER_ADV_SYNC_RSP)
 	EVENT_HANDLER(BT_HCI_EVT_LE_PER_ADVERTISING_REPORT_V2, bt_hci_le_per_adv_report_v2,
@@ -3321,6 +3353,11 @@ static int le_set_event_mask(void)
 		if (IS_ENABLED(CONFIG_BT_PATH_LOSS_MONITORING)) {
 			mask |= BT_EVT_MASK_LE_PATH_LOSS_THRESHOLD;
 		}
+
+		if (IS_ENABLED(CONFIG_BT_SUBRATING) &&
+		    BT_FEAT_LE_CONN_SUBRATING(bt_dev.le.features)) {
+			mask |= BT_EVT_MASK_LE_SUBRATE_CHANGE;
+		}
 	}
 
 	if (IS_ENABLED(CONFIG_BT_SMP) &&
@@ -3604,6 +3641,15 @@ static int le_init(void)
 		}
 	}
 #endif /* CONFIG_BT_DF */
+
+	if (IS_ENABLED(CONFIG_BT_SUBRATING) &&
+	    BT_FEAT_LE_CONN_SUBRATING(bt_dev.le.features)) {
+		/* Connection Subrating - Host support */
+		err = le_set_host_feature(BT_LE_FEAT_BIT_CONN_SUBRATING_HOST_SUPP, 1);
+		if (err) {
+			return err;
+		}
+	}
 
 	return  le_set_event_mask();
 }
